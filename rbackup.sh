@@ -1,156 +1,97 @@
 #!/usr/bin/env bash
 set -eu
 
-
-#
+# rbackup.sh
+# updated at 2021/05/17 (Mon)
+# walkingmask
 # Regular backup (dotfile, app_list, brew_list, dev_list)
-#
 
+# Homebrew wrapper
+function _brew () {
+  PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin brew "$@"
+}
 
-# Error log
+timestamp=`date +%Y%m%d%H%M`
 
-errorlogfile="$HOME/Desktop/rbackup_error`date +%Y%m%d%H%M`.log"
-
+# log files
+brewlogfile="${HOME}/Desktop/brew_log_${timestamp}.log"
+errorlogfile="${HOME}/Desktop/rbackup_error_${timestamp}.log"
 
 # Temp file
-
-tempfile="$HOME/temp/tempfile`date +%Y%m%d%H%M`"
-
+[ -e /tmp/rbackup ] && : || /bin/mkdir /tmp/rbackup
+tempfile="/tmp/rbackup/tempfile_${timestamp}"
 
 # Path of backup dirctory
-
-DOTFILE_DIR=$HOME/work/.dotfile
-LIST_DIR=$HOME/work/.list
-
+DOTFILE_DIR=${HOME}/work/.dotfile
+LIST_DIR=${HOME}/work/.list
 
 # Check backup directory
-
 if [ ! -d $DOTFILE_DIR ]; then
-  mkdir -p $DOTFILE_DIR
+  /bin/mkdir -p $DOTFILE_DIR
 fi
 if [ ! -d $LIST_DIR ]; then
-  mkdir -p $LIST_DIR
+  /bin/mkdir -p $LIST_DIR
 fi
 
-
-# Check brew
-
-if [ -x /usr/local/bin/brew ]; then
-  PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-  brewlogfile="$HOME/Desktop/brew_log`date +%Y%m%d%H%M`.log"
-  /usr/local/bin/brew doctor >$brewlogfile 2>&1 || true
-  /usr/local/bin/brew update >>$brewlogfile 2>&1 || true
-else
-  echo "[`date`] rbackup: Error. There is no brew command." >>$errorlogfile
-  exit 1
-fi
-
-
-# Check dotfile_list
-
-if [ ! -f $DOTFILE_DIR/dotfile_list_wanted ]; then
+# Check dotfile_list_wanted
+if [ ! -f ${DOTFILE_DIR}/dotfile_list_wanted ]; then
   echo "[`date`] rbackup: Error. There is no dotfile_list_wanted." >>$errorlogfile
-  exit 1
+else
+  # Backup dotfile
+  for obj in `cat ${DOTFILE_DIR}/dotfile_list_wanted`; do
+    if [ -e ${HOME}/${obj} ]; then
+      rsync -a ${HOME}/${obj} ${DOTFILE_DIR}/${obj}
+    else
+      echo "[`date`] rbackup: Error. There is no ${HOME}/${obj}" >>$errorlogfile
+    fi
+  done
 fi
-
-# Backup dotfile
-
-for obj in `cat $DOTFILE_DIR/dotfile_list_wanted`; do
-  if [ -e $HOME/$obj ]; then
-    rsync -a $HOME/$obj $DOTFILE_DIR/$obj
-  else
-    echo "[`date`] rbackup: Error. There is no $HOME/$obj" >>$errorlogfile
-  fi
-done
-
 
 # Backup app_list
-
 printf "" >$tempfile
-for obj in /Applications/*
-do
+for obj in /Applications/*; do
   if [ "${obj##*.}" = "app" ]; then
     echo `basename "$obj"` >>$tempfile
   else
     printf "\n- " >>$tempfile
     echo `basename "$obj"` >>$tempfile
-    ls "$obj" | grep ".app" >>$tempfile
+    ls "$obj" | grep ".app" >>$tempfile || :
     echo "" >>$tempfile
   fi
 done
-rsync -a $tempfile $LIST_DIR/app_list
+rsync -a $tempfile ${LIST_DIR}/app_list
 
-
-# Backup brew_list
-
-/usr/local/bin/brew list -v >$tempfile
-rsync -a $tempfile $LIST_DIR/brew_list
-
+# Check brew
+if [ ! -x /usr/local/bin/brew ]; then
+  echo "[`date`] rbackup: Error. There is no brew command." >>$errorlogfile
+else
+  _brew doctor >$brewlogfile 2>&1 || true
+  _brew update >>$brewlogfile 2>&1 || true
+  # Backup brew_list
+  _brew list -v >$tempfile
+  rsync -a $tempfile ${LIST_DIR}/brew_list
+fi
 
 # Path of dev
-
 DEV_DIR=$HOME/dev
 
-
 # Check dev directory
-
 if [ ! -d $DEV_DIR ]; then
   mkdir -p $DEV_DIR
 fi
 
-
 # Backup dev_list
-
-printf "" >$tempfile
-for host in `ls $DEV_DIR`
-do
-  [[ $host =~ ".DS_Store" ]] && continue
-  for user in `ls $DEV_DIR/$host`
-  do
-    [[ $user =~ ".DS_Store" ]] && continue
-    for repo in `ls $DEV_DIR/$host/$user`
-    do
-      [[ $repo =~ ".DS_Store" ]] && continue
-      echo "$host/$user/$repo" >>$tempfile
-    done
-  done
-done
-rsync -a $tempfile $LIST_DIR/dev_list
-
-
-# Backup env_list
-
-printf "" >$tempfile
-for env in `ls $HOME/.anyenv/envs`;
-do
-  echo "${env}:" >>$tempfile
-  if [ -f $HOME/.anyenv/envs/$env/version ]; then
-    echo "* `cat $HOME/.anyenv/envs/$env/version`" >>$tempfile
-  fi
-  for version in `ls $HOME/.anyenv/envs/$env/versions`;
-  do
-    if cat $tempfile | grep $version >/dev/null; then
-      :
-    else
-      echo $version >>$tempfile
-    fi
-  done
-done
-rsync -a $tempfile $LIST_DIR/env_list
-
+ls -R $DEV_DIR >$tempfile
+rsync -a $tempfile ${LIST_DIR}/dev_list
 
 # Backup bin_list
-
-ls $HOME/bin >$tempfile
-rsync -a $tempfile $LIST_DIR/bin_list
-
+ls ${HOME}/bin >$tempfile
+rsync -a $tempfile ${LIST_DIR}/bin_list
 
 # Backup dotfile_list
 ls -a $HOME | grep -E '^\..+' | grep -v "\.\." >$tempfile
-rsync -a $tempfile $LIST_DIR/dotfile_list
-
+rsync -a $tempfile ${LIST_DIR}/dotfile_list
 
 # Exit
-
 /bin/rm -f $tempfile
 exit 0
