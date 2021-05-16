@@ -25,3 +25,5 @@ sed -e "s|SCRIPT_PATH|${SCRIPT_PATH}|g" ${HERE}/rbackup.plist >${HOME}/Library/L
 
 launchctl load ${HOME}/Library/LaunchAgents/rbackup.plist
 launchctl start rbackup
+
+exit 0

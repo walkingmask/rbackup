@@ -14,3 +14,5 @@ if [ -f ${HOME}/Library/LaunchAgents/rbackup.plist ]; then
   launchctl unload ${HOME}/Library/LaunchAgents/rbackup.plist
   rm ${HOME}/Library/LaunchAgents/rbackup.plist
 fi
+
+exit 0
